@@ -30,6 +30,7 @@ const messageSchema = mongoose.Schema(
       ref: "Chat",
       required: true,
     },
+    
   },
   {
     timestamps: true,

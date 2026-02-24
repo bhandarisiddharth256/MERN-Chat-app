@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
 import User from "../models/User.js";
+import mongoose from "mongoose";
 const setupSocket = (server) => {
   const io = new Server(server, {
     pingTimeout: 60000,
@@ -14,7 +15,7 @@ const setupSocket = (server) => {
     // Setup user (join personal room)
     socket.on("setup", async (userData) => {
       try {
-        const userId = userData._id || userData;
+        const userId = userData._id || userData.id;
 
         socket.userId = userId;
         socket.join(userId);
@@ -79,13 +80,8 @@ const setupSocket = (server) => {
     socket.on("group left", ({ chatId }) => {
       socket.to(chatId).emit("group updated");
     });
-
-    // socket.on("messages seen", ({ chatId, userId }) => {
-    //   socket.to(chatId).emit("messages seen", {
-    //     chatId,
-    //     userId,
-    //   });
-    // });
+    
+    
 
     // 🔥 TYPING START
     socket.on("typing", (chatId, userName) => {
