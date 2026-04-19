@@ -9,12 +9,24 @@ import userRoutes from "./routes/userRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
 import setupSocket from "./socket/socket.js";
-import uploadRoutes from "./routes/uploadRoutes.js"
+import uploadRoutes from "./routes/uploadRoutes.js";
+
 dotenv.config();
+
+// 🔗 Connect DB
 connectDB();
 
 const app = express();
 const server = http.createServer(app);
+
+// 🔌 Initialize socket
+const io = setupSocket(server);
+
+// 🔥 Attach io to every request (VERY IMPORTANT)
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
 // Middleware
 app.use(cors());
@@ -32,10 +44,14 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-// Setup socket
-setupSocket(server);
+// ❌ Optional: global error handler (good practice)
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: "Something went wrong" });
+});
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () =>
-  console.log(`Server running on port ${PORT}`)
-);
+
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});

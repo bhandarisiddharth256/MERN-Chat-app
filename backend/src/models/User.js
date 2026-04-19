@@ -32,7 +32,11 @@ const userSchema = mongoose.Schema(
       type: Date,
       default: null,
     },
-    
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
     isOnline: {
       type: Boolean,
       default: false,

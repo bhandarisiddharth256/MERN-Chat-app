@@ -30,7 +30,39 @@ const messageSchema = mongoose.Schema(
       ref: "Chat",
       required: true,
     },
-    
+
+    // ✅ DELETE FEATURE
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    deletedAt: {
+      type: Date,
+    },
+
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    // ✅ REPORT FEATURE
+    reports: [
+      {
+        reportedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        reason: {
+          type: String,
+          enum: ["spam", "abuse", "harassment", "other"],
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

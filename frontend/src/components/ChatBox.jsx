@@ -25,196 +25,153 @@ function ChatBox() {
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [typingUser, setTypingUser] = useState("");
   const [viewerImage, setViewerImage] = useState(null);
+
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+
   const bottomRef = useRef(null);
 
-  /* =========================
-     Fetch messages on chat select
-     ========================= */
+  useEffect(() => {
+    if (!user?._id) return;
+
+    socket.connect(); // 🔥 important if autoConnect: false
+
+    socket.emit("setup", user);
+
+    socket.on("connected", () => {
+      console.log("✅ Socket connected");
+    });
+
+    return () => {
+      socket.off("connected");
+    };
+  }, [user]);
+
+  /* ================= FETCH ================= */
   useEffect(() => {
     if (!selectedChat?._id) return;
 
     const fetchMessages = async () => {
-      try {
-        const res = await api.get(`/api/messages/${selectedChat._id}`);
-        setMessages(res.data);
-
-        socket.emit("join chat", selectedChat._id);
-      } catch (err) {
-        console.error("Fetch messages error", err);
-      }
+      const res = await api.get(`/api/messages/${selectedChat._id}`);
+      setMessages(res.data);
+      socket.emit("join chat", selectedChat._id);
     };
 
     fetchMessages();
-  }, [selectedChat?._id]); // ✅ CORRECT dependency
+  }, [selectedChat?._id]);
 
+  /* ================= SOCKET MESSAGE ================= */
   useEffect(() => {
-    const handleSeen = ({ chatId, userId }) => {
-      if (chatId !== selectedChat?._id) return;
+    socket.on("message received", (newMessage) => {
+      if (newMessage.chat._id === selectedChat?._id) {
+        setMessages((prev) => [...prev, newMessage]);
+      }
+    });
 
+    return () => socket.off("message received");
+  }, [selectedChat]);
+
+  /* ================= SOCKET DELETE ================= */
+  useEffect(() => {
+    socket.on("message deleted", (data) => {
+      console.log("🔥 RECEIVED DELETE EVENT:", data);
       setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.sender._id !== user._id) return msg;
-
-          // 🔥 prevent duplicate seenBy entries
-          if (msg.seenBy?.includes(userId)) return msg;
-
-          return {
-            ...msg,
-            seenBy: [...msg.seenBy, userId],
-          };
-        }),
+        prev.map((msg) =>
+          msg._id === data.messageId
+            ? { ...msg, isDeleted: true, content: "", image: null }
+            : msg,
+        ),
       );
-    };
+    });
 
-    socket.on("messages seen", handleSeen);
-    return () => socket.off("messages seen", handleSeen);
-  }, [selectedChat?._id, user._id]);
+    return () => socket.off("message deleted");
+  }, []);
 
-  /* =========================
-     Auto scroll
-     ========================= */
+  /* ================= SCROLL ================= */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // useEffect(() => {
-  //   if (!selectedChat?._id) return;
-
-  //   // 🔥 IMPORTANT: tab focused hona chahiye
-  //   if (document.visibilityState !== "visible") return;
-
-  //   const markSeen = async () => {
-  //     try {
-  //       await api.put(`/api/messages/${selectedChat._id}/seen`);
-
-  //       socket.emit("messages seen", {
-  //         chatId: selectedChat._id,
-  //         userId: user._id,
-  //       });
-  //     } catch (err) {
-  //       console.error("Mark seen error", err);
-  //     }
-  //   };
-
-  //   markSeen();
-  // }, [selectedChat?._id]);
-
-  /* =========================
-     Message receive (real-time)
-     ========================= */
+  /* ================= CLOSE MENU ================= */
   useEffect(() => {
-    const handleMessage = (newMessage) => {
-      if (newMessage.chat._id === selectedChat?._id) {
-        setMessages((prev) => [...prev, newMessage]);
-      }
+    const close = () => setSelectedMessage(null);
 
-      // Sidebar lastMessage update + reorder
-      setChats((prev) => {
-        const existing = prev.find((c) => c._id === newMessage.chat._id);
-        if (!existing) return prev;
+    if (selectedMessage) {
+      window.addEventListener("click", close);
+    }
 
-        const updatedChat = {
-          ...existing,
-          lastMessage: newMessage,
-        };
+    return () => window.removeEventListener("click", close);
+  }, [selectedMessage]);
 
-        return [
-          updatedChat,
-          ...prev.filter((c) => c._id !== newMessage.chat._id),
-        ];
+  /* ================= HANDLERS ================= */
+  const handleMessageClick = (e, msg) => {
+    e.stopPropagation();
+    setSelectedMessage(msg);
+    setMenuPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  // ✅ PASS MESSAGE DIRECTLY
+  const handleDeleteClick = (msg) => {
+    setSelectedMessage(msg);
+    setShowDeleteModal(true);
+  };
+
+  const handleReportClick = (msg) => {
+    setSelectedMessage(msg);
+    setShowReportModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedMessage?._id) {
+      console.log("❌ No message selected");
+      return;
+    }
+
+    try {
+      const res = await api.put("/api/messages/delete", {
+        messageId: selectedMessage._id,
       });
-    };
 
-    socket.on("message received", handleMessage);
-    return () => socket.off("message received", handleMessage);
-  }, [selectedChat, setChats]);
+      console.log("✅ Delete:", res.data);
 
-  /* =========================
-     Typing indicator
-     ========================= */
-  useEffect(() => {
-    socket.on("typing", (name) => {
-      setTypingUser(name);
-    });
+      // ⚠️ OPTIONAL: backend already emits socket
+      // socket.emit("delete message", { ... });
 
-    socket.on("stop typing", () => {
-      setTypingUser("");
-    });
+      setShowDeleteModal(false);
+      setSelectedMessage(null);
+    } catch (err) {
+      console.error("❌ Delete error:", err.response?.data || err);
+    }
+  };
 
-    return () => {
-      socket.off("typing");
-      socket.off("stop typing");
-    };
-  }, []);
+  const confirmReport = async (reason) => {
+    if (!selectedMessage?._id) {
+      console.log("❌ No message selected");
+      return;
+    }
 
-  /* =========================
-     Online / Offline status
-     ========================= */
-  useEffect(() => {
-    socket.on("user online", (userId) => {
-      setOnlineUsers((prev) =>
-        prev.includes(userId) ? prev : [...prev, userId],
-      );
-    });
+    try {
+      const res = await api.post("/api/messages/report", {
+        messageId: selectedMessage._id,
+        reason,
+      });
 
-    socket.on("user offline", (userId) => {
-      setOnlineUsers((prev) => prev.filter((id) => id !== userId));
-    });
+      console.log("✅ Report:", res.data);
 
-    return () => {
-      socket.off("user online");
-      socket.off("user offline");
-    };
-  }, [setOnlineUsers]);
-
-  /* =========================
-     Group rename (real-time)
-     ========================= */
-  useEffect(() => {
-    socket.on("group renamed", (updatedChat) => {
-      setChats((prev) =>
-        prev.map((c) => (c._id === updatedChat._id ? updatedChat : c)),
-      );
-
-      if (selectedChat?._id === updatedChat._id) {
-        setSelectedChat(updatedChat);
-      }
-    });
-
-    return () => socket.off("group renamed");
-  }, [selectedChat, setChats, setSelectedChat]);
-
-  /* =========================
-     Group update (add/remove/leave)
-     ========================= */
-  useEffect(() => {
-    socket.on("group updated", (updatedChat) => {
-      setChats((prev) =>
-        prev.map((c) => (c._id === updatedChat._id ? updatedChat : c)),
-      );
-
-      if (selectedChat?._id === updatedChat._id) {
-        setSelectedChat(updatedChat);
-      }
-    });
-
-    return () => socket.off("group updated");
-  }, [selectedChat, setChats, setSelectedChat]);
-
-  /* =========================
-     Placeholder
-     ========================= */
+      setShowReportModal(false);
+      setSelectedMessage(null);
+      alert("Reported successfully");
+    } catch (err) {
+      console.error("❌ Report error:", err.response?.data || err);
+    }
+  };
+  /* ================= EARLY RETURN ================= */
   if (!selectedChat) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-        <div className="text-5xl mb-4">💬</div>
-        <h2 className="text-lg font-medium text-gray-300">
-          Select a conversation
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Start chatting with your friends or groups
-        </p>
-      </div>
+      <div className="flex-1 flex items-center justify-center">Select chat</div>
     );
   }
 
@@ -226,60 +183,18 @@ function ChatBox() {
     ? selectedChat.chatName
     : otherUser?.name;
 
-  const isOnline = otherUser && onlineUsers.includes(otherUser._id);
-
+  /* ================= UI ================= */
   return (
     <div className="flex-1 flex flex-col bg-gray-900">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-        <div>
-          <h2 className="text-lg font-semibold">{chatName}</h2>
-
-          {!selectedChat.isGroupChat && (
-            <p className="text-sm text-gray-400">
-              {isOnline
-                ? "Online"
-                : otherUser?.lastSeen
-                  ? `Last seen ${new Date(
-                      otherUser.lastSeen,
-                    ).toLocaleTimeString()}`
-                  : "Offline"}
-            </p>
-          )}
-        </div>
-
-        <div className="flex gap-3">
-          {selectedChat.isGroupChat &&
-            selectedChat.groupAdmin?._id === user._id && (
-              <button
-                onClick={() => setShowRenameModal(true)}
-                className="text-sm text-blue-400"
-              >
-                Rename
-              </button>
-            )}
-
-          {selectedChat.isGroupChat && (
-            <button
-              onClick={() => setShowGroupInfo(true)}
-              className="text-sm text-gray-400"
-            >
-              Info
-            </button>
-          )}
-        </div>
+      {/* HEADER */}
+      <div className="p-4 border-b border-gray-700">
+        <h2 className="text-white">{chatName}</h2>
       </div>
 
-      {/* Messages */}
+      {/* MESSAGES */}
       <div className="flex-1 p-4 overflow-y-auto space-y-2">
         {messages.map((msg) => {
           const isSender = msg.sender._id === user._id;
-
-          const receiverId = selectedChat.users.find(
-            (u) => u._id !== user._id,
-          )?._id;
-
-          const isSeen = isSender && msg.seenBy?.includes(receiverId);
 
           return (
             <div
@@ -287,76 +202,160 @@ function ChatBox() {
               className={`flex ${isSender ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`px-3 py-2 rounded max-w-xs ${
+                onClick={(e) => handleMessageClick(e, msg)}
+                className={`px-3 py-2 rounded max-w-xs cursor-pointer ${
                   isSender ? "bg-blue-600" : "bg-gray-700"
                 }`}
               >
-                {/* IMAGE */}
-                {msg.image && (
-                  <img
-                    src={
-                      msg.image.startsWith("http")
-                        ? msg.image
-                        : `http://localhost:5000${msg.image}`
-                    }
-                    onClick={() => setViewerImage(msg.image)}
-                    alt="sent"
-                    className="max-w-[200px] rounded mb-1"
-                  />
+                {msg.isDeleted ? (
+                  <p className="italic text-gray-300">
+                    This message was deleted
+                  </p>
+                ) : (
+                  <>
+                    {msg.image && (
+                      <img
+                        src={
+                          msg.image.startsWith("http")
+                            ? msg.image
+                            : `http://localhost:5000${msg.image}`
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewerImage(msg.image);
+                        }}
+                        className="max-w-[200px] rounded mb-1"
+                      />
+                    )}
+                    {msg.content && <p>{msg.content}</p>}
+                  </>
                 )}
-
-                {/* TEXT */}
-                {msg.content && (
-                  <p className="text-sm break-words">{msg.content}</p>
-                )}
-
-                {/* ✔ / ✔✔ */}
-                {/* {isSender && (
-                  <div className="flex justify-end mt-1">
-                    <span
-                      className={`text-xs ${
-                        isSeen ? "text-blue-300" : "text-gray-300"
-                      }`}
-                    >
-                      {isSeen ? "✔✔" : "✔"}
-                    </span>
-                  </div>
-                )} */}
               </div>
             </div>
           );
         })}
-
         <div ref={bottomRef} />
       </div>
 
-      {/* Typing */}
-      {typingUser && (
-        <p className="text-sm text-gray-400 italic px-4">
-          {typingUser} is typing...
-        </p>
-      )}
-
-      {/* Input */}
+      {/* INPUT */}
       <MessageInput messages={messages} setMessages={setMessages} />
 
-      {/* Modals */}
-      {showRenameModal && (
-        <GroupRenameModal
-          chat={selectedChat}
-          onClose={() => setShowRenameModal(false)}
-        />
-      )}
-
-      {showGroupInfo && (
-        <GroupInfoModal
-          chat={selectedChat}
-          onClose={() => setShowGroupInfo(false)}
-        />
-      )}
-
+      {/* IMAGE VIEW */}
       {viewerImage && (
         <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />
+      )}
+
+      {/* SMALL MENU */}
+      {selectedMessage && (
+        <div
+          style={{
+            position: "fixed",
+            top: menuPosition.y,
+            left: menuPosition.x,
+          }}
+          className="bg-gray-800 border rounded shadow-md z-[9999]"
+        >
+          {selectedMessage.sender._id === user._id && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteClick(selectedMessage);
+              }}
+              className="block px-4 py-2 text-red-400"
+            >
+              Delete
+            </button>
+          )}
+
+          {selectedMessage.sender._id !== user._id && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleReportClick(selectedMessage);
+              }}
+              className="block px-4 py-2 text-yellow-400"
+            >
+              Report
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* DELETE MODAL */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-[9999]">
+          <div className="bg-gray-900 w-[350px] rounded-xl shadow-lg p-6">
+            {/* Title */}
+            <h2 className="text-white text-lg font-semibold mb-2">
+              Delete Message
+            </h2>
+
+            {/* Description */}
+            <p className="text-gray-400 text-sm mb-6">
+              Are you sure you want to delete this message? This action cannot
+              be undone.
+            </p>
+
+            {/* Buttons */}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white transition"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REPORT MODAL */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-[9999]">
+          <div className="bg-gray-900 w-[350px] rounded-xl shadow-lg p-6">
+            {/* Title */}
+            <h2 className="text-white text-lg font-semibold mb-4">
+              Report Message
+            </h2>
+
+            {/* Options */}
+            <div className="flex flex-col gap-3">
+              {["Spam", "Abuse", "Harassment", "Other"].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => confirmReport(type.toLowerCase())}
+                  className="w-full text-left px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white transition"
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -55,6 +55,16 @@ const setupSocket = (server) => {
         socket.to(user._id).emit("message received", newMessage);
       });
     });
+    
+    // socket.on("delete message", (data) => {
+    //   const { messageId, chatId } = data;
+
+    //   io.to(chatId).emit("message deleted", {
+    //     messageId,
+    //     isDeleted: true,
+    //     content: "This message was deleted",
+    //   });
+    // });
 
     socket.on("chat seen", async (chatId) => {
       try {
@@ -80,8 +90,6 @@ const setupSocket = (server) => {
     socket.on("group left", ({ chatId }) => {
       socket.to(chatId).emit("group updated");
     });
-    
-    
 
     // 🔥 TYPING START
     socket.on("typing", (chatId, userName) => {
@@ -103,7 +111,10 @@ const setupSocket = (server) => {
         io.emit("user offline", socket.userId);
       }
     });
+
   });
+
+  return io;
 };
 
 export default setupSocket;
