@@ -8,7 +8,7 @@ import ChatUser from "../models/ChatUser.js";
  * @access  Private
  */
 export const sendMessage = async (req, res) => {
-  const { content, chatId, image } = req.body;
+  const { content, chatId, image, replyTo } = req.body;
   console.log("REQ BODY:", req.body);
   if (!chatId || (!content && !image)) {
     return res.status(400).json({
@@ -24,11 +24,13 @@ export const sendMessage = async (req, res) => {
       image: image || "",
       chat: chatId,
       seenBy: [],
+      replyTo: replyTo || null,
     });
 
     // 2️⃣ Populate sender & chat
     message = await message.populate("sender", "name email avatar");
     message = await message.populate("chat");
+    message = await message.populate("replyTo", "content image sender isDeleted");
 
     // 3️⃣ Update last message in Chat
     await Chat.findByIdAndUpdate(chatId, {

@@ -49,6 +49,11 @@ const messageSchema = mongoose.Schema(
     isEdited: { type: Boolean, default: false },
     editedAt: Date,
 
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+    },
+
     // ✅ REPORT FEATURE
     reports: [
       {

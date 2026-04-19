@@ -26,6 +26,8 @@ function ChatBox() {
   const [typingUser, setTypingUser] = useState("");
   const [viewerImage, setViewerImage] = useState(null);
 
+  const [replyMessage, setReplyMessage] = useState(null);
+
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
@@ -320,13 +322,27 @@ function ChatBox() {
                   isSender ? "bg-blue-600" : "bg-gray-700"
                 }`}
               >
-                {/* ✅ DELETED MESSAGE FIRST */}
+                {/* 🔥 REPLY BLOCK (CORRECT PLACE) */}
+                {msg.replyTo && (
+                  <div className="bg-gray-800 p-2 rounded mb-1 border-l-4 border-green-400">
+                    <p className="text-xs text-gray-400">
+                      {msg.replyTo.sender?.name || "User"}
+                    </p>
+
+                    <p className="text-xs truncate">
+                      {msg.replyTo.isDeleted
+                        ? "This message was deleted"
+                        : msg.replyTo.content || "📷 Image"}
+                    </p>
+                  </div>
+                )}
+
+                {/* ✅ DELETED */}
                 {msg.isDeleted ? (
                   <p className="italic text-gray-300">
                     This message was deleted
                   </p>
                 ) : editingMessageId === msg._id ? (
-                  /* ✅ EDIT MODE */
                   <input
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
@@ -344,14 +360,12 @@ function ChatBox() {
                         e.preventDefault();
                         saveEdit(msg._id);
                       }
-
                       if (e.key === "Escape") {
                         e.preventDefault();
                         setEditingMessageId(null);
                       }
                     }}
                     onBlur={() => {
-                      // ✅ prevent double call & unwanted save
                       if (
                         editingMessageId === msg._id &&
                         editText.trim() &&
@@ -364,7 +378,6 @@ function ChatBox() {
                     }}
                   />
                 ) : (
-                  /* ✅ NORMAL MESSAGE */
                   <>
                     {msg.image && (
                       <img
@@ -397,11 +410,37 @@ function ChatBox() {
             </div>
           );
         })}
+
         <div ref={bottomRef} />
       </div>
 
+      {replyMessage && (
+        <div className="bg-gray-800 p-2 border-l-4 border-green-400 flex justify-between items-center">
+          <div>
+            <p className="text-xs text-gray-400">
+              Replying to {replyMessage.sender.name}
+            </p>
+            <p className="text-sm truncate">
+              {replyMessage.content || "📷 Image"}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setReplyMessage(null)}
+            className="text-red-400"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* INPUT */}
-      <MessageInput messages={messages} setMessages={setMessages} />
+      <MessageInput
+        messages={messages}
+        setMessages={setMessages}
+        replyMessage={replyMessage}
+        setReplyMessage={setReplyMessage}
+      />
 
       {/* IMAGE VIEW */}
       {viewerImage && (
@@ -418,6 +457,17 @@ function ChatBox() {
           }}
           className="bg-gray-800 border rounded shadow-md z-[9999]"
         >
+          {/* ✅ Reply for ALL messages */}
+          <button
+            onClick={() => {
+              setReplyMessage(selectedMessage);
+              setSelectedMessage(null);
+            }}
+            className="block px-4 py-2 text-green-400"
+          >
+            Reply
+          </button>
+
           {selectedMessage.sender._id === user._id && (
             <>
               <button
@@ -459,6 +509,16 @@ function ChatBox() {
               Report
             </button>
           )}
+
+          {/* <button
+            onClick={() => {
+              setReplyMessage(selectedMessage);
+              setSelectedMessage(null);
+            }}
+            className="block px-4 py-2 text-green-400"
+          >
+            Reply
+          </button> */}
         </div>
       )}
 

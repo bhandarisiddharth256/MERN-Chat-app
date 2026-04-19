@@ -4,7 +4,12 @@ import { useChat } from "../context/ChatContext";
 import { useAuth } from "../context/AuthContext";
 import { socket } from "../socket/socket";
 
-function MessageInput({ messages, setMessages }) {
+function MessageInput({
+  messages,
+  setMessages,
+  replyMessage,
+  setReplyMessage,
+}) {
   const { selectedChat, setChats } = useChat();
   const { user } = useAuth();
 
@@ -52,7 +57,7 @@ function MessageInput({ messages, setMessages }) {
       socket.emit("stop typing", selectedChat._id);
       setUploading(true);
 
-      // 🔥 helper to update sidebar correctly
+      // 🔥 helper to update sidebar
       const updateSidebar = (newMessage) => {
         setChats((prev) => {
           const existing = prev.find((c) => c._id === selectedChat._id);
@@ -89,10 +94,11 @@ function MessageInput({ messages, setMessages }) {
           content: "",
           image: uploadRes.data.imageUrl,
           chatId: selectedChat._id,
+          replyTo: replyMessage?._id || null, // 🔥 NEW
         });
 
         setMessages((prev) => [...prev, res.data]);
-        updateSidebar(res.data); // ✅ FIX
+        updateSidebar(res.data);
         socket.emit("new message", res.data);
       }
 
@@ -101,17 +107,20 @@ function MessageInput({ messages, setMessages }) {
         const res = await api.post("/api/messages", {
           content,
           chatId: selectedChat._id,
+          replyTo: replyMessage?._id || null, // 🔥 NEW
         });
 
         setMessages((prev) => [...prev, res.data]);
-        updateSidebar(res.data); // ✅ FIX
+        updateSidebar(res.data);
         socket.emit("new message", res.data);
       }
 
+      // 🔥 RESET
       setContent("");
       setImages([]);
       setPreviews([]);
       setProgress(0);
+      setReplyMessage(null); // 🔥 IMPORTANT
     } catch (err) {
       console.error("Send message error:", err);
     } finally {
@@ -167,6 +176,26 @@ function MessageInput({ messages, setMessages }) {
         </div>
       )}
 
+      {/* {replyMessage && (
+        <div className="bg-gray-800 p-2 mb-2 rounded border-l-4 border-green-400 flex justify-between">
+          <div>
+            <p className="text-xs text-gray-400">
+              Replying to {replyMessage.sender?.name}
+            </p>
+            <p className="text-sm truncate">
+              {replyMessage.content || "📷 Image"}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setReplyMessage(null)}
+            className="text-red-400"
+          >
+            ✕
+          </button>
+        </div>
+      )} */}
+
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -188,6 +217,11 @@ function MessageInput({ messages, setMessages }) {
         <input
           value={content}
           onChange={handleTyping}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              sendMessage();
+            }
+          }}
           placeholder="Type a message..."
           className="flex-1 px-4 py-2 rounded bg-gray-700"
         />
