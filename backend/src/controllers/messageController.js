@@ -163,23 +163,12 @@ export const deleteMessage = async (req, res) => {
     res.status(200).json({
       message: "Message deleted successfully",
     });
-
   } catch (error) {
     console.error("🔥 Delete message error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-/**
- * @desc    Report a message
- * @route   POST /api/messages/report
- * @access  Private
- */
-/**
- * @desc    Report a message
- * @route   POST /api/messages/report
- * @access  Private
- */
 export const reportMessage = async (req, res) => {
   const { messageId, reason } = req.body;
   const userId = req.user._id;
@@ -224,6 +213,64 @@ export const reportMessage = async (req, res) => {
     });
   } catch (error) {
     console.error("Report message error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const editMessage = async (req, res) => {
+  const { messageId, newContent } = req.body;
+  const userId = req.user._id;
+
+  if (!messageId || !newContent) {
+    return res.status(400).json({
+      message: "MessageId and newContent required",
+    });
+  }
+
+  try {
+    const message = await Message.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    // ✅ NOW safe to use message
+    const diff = Date.now() - new Date(message.createdAt).getTime();
+
+    if (diff > 10 * 60 * 1000) {
+      return res.status(400).json({ message: "Edit time expired" });
+    }
+
+    // 🔒 Only sender can edit
+    if (message.sender.toString() !== userId.toString()) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    if (message.isDeleted) {
+      return res.status(400).json({ message: "Cannot edit deleted message" });
+    }
+
+    message.content = newContent;
+    message.isEdited = true;
+    message.editedAt = new Date();
+
+    await message.save();
+
+    if (req.io && message.chat) {
+      req.io.to(message.chat.toString()).emit("message edited", {
+        messageId: message._id,
+        content: message.content,
+        isEdited: true,
+      });
+    }
+
+    res.status(200).json({
+      message: "Message updated",
+      data: message,
+    });
+
+  } catch (err) {
+    console.error("🔥 Edit message error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

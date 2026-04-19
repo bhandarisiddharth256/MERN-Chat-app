@@ -32,6 +32,9 @@ function ChatBox() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
 
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editText, setEditText] = useState("");
+
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -106,11 +109,62 @@ function ChatBox() {
     return () => window.removeEventListener("click", close);
   }, [selectedMessage]);
 
+  useEffect(() => {
+    socket.on("message edited", (data) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === data.messageId
+            ? { ...msg, content: data.content, isEdited: true }
+            : msg,
+        ),
+      );
+    });
+
+    return () => socket.off("message edited");
+  }, []);
+
+  useEffect(() => {
+    socket.on("message edited", (data) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === data.messageId
+            ? { ...msg, content: data.content, isEdited: true }
+            : msg,
+        ),
+      );
+
+      // also update sidebar
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.lastMessage?._id === data.messageId
+            ? {
+                ...chat,
+                lastMessage: {
+                  ...chat.lastMessage,
+                  content: data.content,
+                  isEdited: true,
+                },
+              }
+            : chat,
+        ),
+      );
+    });
+
+    return () => socket.off("message edited");
+  }, []);
+
   /* ================= HANDLERS ================= */
   const handleMessageClick = (e, msg) => {
     e.stopPropagation();
     setSelectedMessage(msg);
     setMenuPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const canEditMessage = (msg) => {
+    const createdAt = new Date(msg.createdAt).getTime();
+    const now = Date.now();
+
+    return now - createdAt <= 10 * 60 * 1000; // 10 mins
   };
 
   // ✅ PASS MESSAGE DIRECTLY
@@ -144,6 +198,33 @@ function ChatBox() {
       setSelectedMessage(null);
     } catch (err) {
       console.error("❌ Delete error:", err.response?.data || err);
+    }
+  };
+
+  const handleEditClick = () => {
+    setEditingMessageId(selectedMessage._id);
+    setEditText(selectedMessage.content || "");
+    setSelectedMessage(null);
+  };
+
+  const saveEdit = async (messageId) => {
+    if (!editText.trim()) return;
+
+    if (editText === selectedMessage?.content) {
+      setEditingMessageId(null);
+      return;
+    }
+
+    try {
+      await api.put("/api/messages/edit", {
+        messageId,
+        newContent: editText,
+      });
+
+      setEditingMessageId(null);
+      setEditText("");
+    } catch (err) {
+      console.error("Edit error:", err);
     }
   };
 
@@ -190,12 +271,13 @@ function ChatBox() {
       <div className="p-4 border-b border-gray-700 flex justify-between items-center">
         <div>
           <h2 className="text-lg font-semibold">{chatName}</h2>
-
+          {/* const isOnline =
+              !chat.isGroupChat && onlineUsers.includes(otherUser?._id);
           {!selectedChat.isGroupChat && (
             <p className="text-sm text-gray-400">
               {isOnline ? "Online" : "Offline"}
             </p>
-          )}
+          )} */}
         </div>
 
         <div className="flex gap-3">
@@ -238,11 +320,51 @@ function ChatBox() {
                   isSender ? "bg-blue-600" : "bg-gray-700"
                 }`}
               >
+                {/* ✅ DELETED MESSAGE FIRST */}
                 {msg.isDeleted ? (
                   <p className="italic text-gray-300">
                     This message was deleted
                   </p>
+                ) : editingMessageId === msg._id ? (
+                  /* ✅ EDIT MODE */
+                  <input
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    autoFocus
+                    className="bg-gray-800 text-white px-2 py-1 rounded w-full"
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) =>
+                      e.target.setSelectionRange(
+                        e.target.value.length,
+                        e.target.value.length,
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        saveEdit(msg._id);
+                      }
+
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setEditingMessageId(null);
+                      }
+                    }}
+                    onBlur={() => {
+                      // ✅ prevent double call & unwanted save
+                      if (
+                        editingMessageId === msg._id &&
+                        editText.trim() &&
+                        editText !== msg.content
+                      ) {
+                        saveEdit(msg._id);
+                      } else {
+                        setEditingMessageId(null);
+                      }
+                    }}
+                  />
                 ) : (
+                  /* ✅ NORMAL MESSAGE */
                   <>
                     {msg.image && (
                       <img
@@ -258,7 +380,17 @@ function ChatBox() {
                         className="max-w-[200px] rounded mb-1"
                       />
                     )}
-                    {msg.content && <p>{msg.content}</p>}
+
+                    {msg.content && (
+                      <p className="text-sm break-words">
+                        {msg.content}
+                        {msg.isEdited && (
+                          <span className="text-xs text-gray-400 ml-1">
+                            (edited)
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </>
                 )}
               </div>
@@ -287,15 +419,33 @@ function ChatBox() {
           className="bg-gray-800 border rounded shadow-md z-[9999]"
         >
           {selectedMessage.sender._id === user._id && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteClick(selectedMessage);
-              }}
-              className="block px-4 py-2 text-red-400"
-            >
-              Delete
-            </button>
+            <>
+              <button
+                onClick={
+                  canEditMessage(selectedMessage) ? handleEditClick : undefined
+                }
+                disabled={!canEditMessage(selectedMessage)}
+                title={
+                  canEditMessage(selectedMessage)
+                    ? "Edit message"
+                    : "Edit time expired"
+                }
+                className={`block px-4 py-2 ${
+                  canEditMessage(selectedMessage)
+                    ? "text-blue-400 hover:bg-gray-700"
+                    : "text-gray-500 cursor-not-allowed"
+                }`}
+              >
+                Edit
+              </button>
+
+              <button
+                onClick={handleDeleteClick}
+                className="block px-4 py-2 text-red-400 hover:bg-gray-700"
+              >
+                Delete
+              </button>
+            </>
           )}
 
           {selectedMessage.sender._id !== user._id && (
@@ -304,7 +454,7 @@ function ChatBox() {
                 e.stopPropagation();
                 handleReportClick(selectedMessage);
               }}
-              className="block px-4 py-2 text-yellow-400"
+              className="block px-4 py-2 text-yellow-400 hover:bg-gray-700"
             >
               Report
             </button>

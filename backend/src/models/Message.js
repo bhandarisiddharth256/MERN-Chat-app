@@ -46,6 +46,9 @@ const messageSchema = mongoose.Schema(
       ref: "User",
     },
 
+    isEdited: { type: Boolean, default: false },
+    editedAt: Date,
+
     // ✅ REPORT FEATURE
     reports: [
       {

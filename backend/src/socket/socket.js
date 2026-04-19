@@ -55,7 +55,7 @@ const setupSocket = (server) => {
         socket.to(user._id).emit("message received", newMessage);
       });
     });
-    
+
     // socket.on("delete message", (data) => {
     //   const { messageId, chatId } = data;
 
@@ -111,7 +111,6 @@ const setupSocket = (server) => {
         io.emit("user offline", socket.userId);
       }
     });
-
   });
 
   return io;
