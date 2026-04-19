@@ -167,11 +167,13 @@ function Sidebar() {
 
                   {chat.lastMessage && (
                     <p className="text-sm text-gray-400 truncate">
-                      {chat.lastMessage?.content
-                        ? chat.lastMessage.content
-                        : chat.lastMessage?.image
-                          ? "📷 Image"
-                          : ""}
+                      {chat.lastMessage.isDeleted
+                        ? "This message was deleted"
+                        : chat.lastMessage.content
+                          ? chat.lastMessage.content
+                          : chat.lastMessage.image
+                            ? "📷 Image"
+                            : ""}
                     </p>
                   )}
                 </div>

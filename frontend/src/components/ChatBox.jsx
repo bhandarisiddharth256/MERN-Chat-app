@@ -187,8 +187,39 @@ function ChatBox() {
   return (
     <div className="flex-1 flex flex-col bg-gray-900">
       {/* HEADER */}
-      <div className="p-4 border-b border-gray-700">
-        <h2 className="text-white">{chatName}</h2>
+      <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-semibold">{chatName}</h2>
+
+          {!selectedChat.isGroupChat && (
+            <p className="text-sm text-gray-400">
+              {isOnline ? "Online" : "Offline"}
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          {/* ✅ Rename (only admin) */}
+          {selectedChat.isGroupChat &&
+            selectedChat.groupAdmin?._id === user._id && (
+              <button
+                onClick={() => setShowRenameModal(true)}
+                className="text-sm text-blue-400"
+              >
+                Rename
+              </button>
+            )}
+
+          {/* ✅ Info */}
+          {selectedChat.isGroupChat && (
+            <button
+              onClick={() => setShowGroupInfo(true)}
+              className="text-sm text-gray-400"
+            >
+              Info
+            </button>
+          )}
+        </div>
       </div>
 
       {/* MESSAGES */}
@@ -356,6 +387,20 @@ function ChatBox() {
             </div>
           </div>
         </div>
+      )}
+
+      {showRenameModal && (
+        <GroupRenameModal
+          chat={selectedChat}
+          onClose={() => setShowRenameModal(false)}
+        />
+      )}
+
+      {showGroupInfo && (
+        <GroupInfoModal
+          chat={selectedChat}
+          onClose={() => setShowGroupInfo(false)}
+        />
       )}
     </div>
   );
