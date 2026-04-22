@@ -120,20 +120,6 @@ function ChatBox() {
             : msg,
         ),
       );
-    });
-
-    return () => socket.off("message edited");
-  }, []);
-
-  useEffect(() => {
-    socket.on("message edited", (data) => {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg._id === data.messageId
-            ? { ...msg, content: data.content, isEdited: true }
-            : msg,
-        ),
-      );
 
       // also update sidebar
       setChats((prev) =>
@@ -157,6 +143,7 @@ function ChatBox() {
 
   /* ================= HANDLERS ================= */
   const handleMessageClick = (e, msg) => {
+    if (msg.isDeleted) return;
     e.stopPropagation();
     setSelectedMessage(msg);
     setMenuPosition({ x: e.clientX, y: e.clientY });
@@ -309,7 +296,7 @@ function ChatBox() {
       {/* MESSAGES */}
       <div className="flex-1 p-4 overflow-y-auto space-y-2">
         {messages.map((msg) => {
-          const isSender = msg.sender._id === user._id;
+          const isSender = msg?.sender?._id === user?._id;
 
           return (
             <div
@@ -387,10 +374,15 @@ function ChatBox() {
                             : `http://localhost:5000${msg.image}`
                         }
                         onClick={(e) => {
+                           if (msg.isDeleted) return; // ❌ no menu
                           e.stopPropagation();
-                          setViewerImage(msg.image);
+                          setViewerImage(msg.image); // 👁️ open image
                         }}
-                        className="max-w-[200px] rounded mb-1"
+                        onContextMenu={(e) => {
+                          e.preventDefault(); // ❌ disable browser menu
+                          handleMessageClick(e, msg); // ✅ show your menu
+                        }}
+                        className="max-w-[200px] rounded mb-1 cursor-pointer"
                       />
                     )}
 
@@ -418,7 +410,7 @@ function ChatBox() {
         <div className="bg-gray-800 p-2 border-l-4 border-green-400 flex justify-between items-center">
           <div>
             <p className="text-xs text-gray-400">
-              Replying to {replyMessage.sender.name}
+              Replying to {replyMessage?.sender?.name}
             </p>
             <p className="text-sm truncate">
               {replyMessage.content || "📷 Image"}
@@ -468,7 +460,7 @@ function ChatBox() {
             Reply
           </button>
 
-          {selectedMessage.sender._id === user._id && (
+          {selectedMessage?.sender?._id === user?._id && (
             <>
               <button
                 onClick={
@@ -490,7 +482,10 @@ function ChatBox() {
               </button>
 
               <button
-                onClick={handleDeleteClick}
+                onClick={(e) => {
+                  e.stopPropagation(); // 🔥 VERY IMPORTANT
+                  handleDeleteClick(selectedMessage);
+                }}
                 className="block px-4 py-2 text-red-400 hover:bg-gray-700"
               >
                 Delete
@@ -498,7 +493,7 @@ function ChatBox() {
             </>
           )}
 
-          {selectedMessage.sender._id !== user._id && (
+          {selectedMessage?.sender?._id !== user._id && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -509,16 +504,6 @@ function ChatBox() {
               Report
             </button>
           )}
-
-          {/* <button
-            onClick={() => {
-              setReplyMessage(selectedMessage);
-              setSelectedMessage(null);
-            }}
-            className="block px-4 py-2 text-green-400"
-          >
-            Reply
-          </button> */}
         </div>
       )}
 
