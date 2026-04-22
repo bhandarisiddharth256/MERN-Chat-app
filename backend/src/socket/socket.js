@@ -1,11 +1,19 @@
 import { Server } from "socket.io";
 import User from "../models/User.js";
 import mongoose from "mongoose";
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://your-frontend.vercel.app",
+];
+
 const setupSocket = (server) => {
   const io = new Server(server, {
     pingTimeout: 60000,
     cors: {
-      origin: "*", // frontend later
+      origin: allowedOrigins,
+      methods: ["GET", "POST"],
+      credentials: true,
     },
   });
 
