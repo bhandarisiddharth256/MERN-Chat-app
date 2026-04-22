@@ -1,5 +1,5 @@
 import { io } from "socket.io-client";
 
-const ENDPOINT = "https://mern-chat-app-8oxm.onrender.com/";
+const ENDPOINT = import.meta.env.VITE_API_URL;
 
 export const socket = io(ENDPOINT);
