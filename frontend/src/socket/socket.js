@@ -1,5 +1,5 @@
 import { io } from "socket.io-client";
 
-const ENDPOINT = "http://localhost:5000";
+const ENDPOINT = "https://mern-chat-app-8oxm.onrender.com/";
 
 export const socket = io(ENDPOINT);

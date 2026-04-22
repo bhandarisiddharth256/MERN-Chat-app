@@ -371,7 +371,7 @@ function ChatBox() {
                         src={
                           msg.image.startsWith("http")
                             ? msg.image
-                            : `http://localhost:5000${msg.image}`
+                            : `https://mern-chat-app-8oxm.onrender.com/${msg.image}`
                         }
                         onClick={(e) => {
                            if (msg.isDeleted) return; // ❌ no menu
