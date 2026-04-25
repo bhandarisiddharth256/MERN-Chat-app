@@ -4,20 +4,25 @@ export const translateText = async (req, res) => {
   try {
     const { text, targetLang } = req.body;
 
-    if (!text) {
-      return res.status(400).json({ message: "Text is required" });
-    }
+    const response = await axios.post(
+      "https://translate.argosopentech.com/translate",
+      {
+        q: text,
+        source: "auto",
+        target: targetLang,
+        format: "text",
+      },
+    );
 
-    const response = await axios.post("https://libretranslate.de/translate", {
-      q: text,
-      source: "auto",
-      target: targetLang,
-      format: "text",
-    });
+    console.log("🔥 RAW RESPONSE:", response.data);
 
-    res.json({
-      translatedText: response.data.translatedText,
-    });
+    // 🔥 SAFE EXTRACTION
+    const translatedText =
+      response.data?.translatedText ||
+      response.data?.data?.translatedText ||
+      "";
+
+    res.json({ translatedText });
   } catch (error) {
     console.error("Translation error:", error.message);
     res.status(500).json({ message: "Translation failed" });

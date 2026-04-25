@@ -171,7 +171,7 @@ function ChatBox() {
         text: msg.content,
         targetLang: "en", // you can change later
       });
-
+      console.log("🔥 API RESPONSE:", res.data); // 👈 ADD THIS
       setTranslatedMessages((prev) => ({
         ...prev,
         [msg._id]: res.data.translatedText,
@@ -467,7 +467,6 @@ function ChatBox() {
         <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />
       )}
 
-      {/* SMALL MENU */}
       {/* SMALL MENU */}
 
       {selectedMessage && (
