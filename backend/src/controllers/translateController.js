@@ -12,19 +12,25 @@ export const translateText = async (req, res) => {
         target: targetLang,
         format: "text",
       },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
     );
 
     console.log("🔥 RAW RESPONSE:", response.data);
 
-    // 🔥 SAFE EXTRACTION
-    const translatedText =
-      response.data?.translatedText ||
-      response.data?.data?.translatedText ||
-      "";
+    // ✅ IMPORTANT: direct access
+    const translatedText = response.data.translatedText;
 
     res.json({ translatedText });
   } catch (error) {
-    console.error("Translation error:", error.message);
-    res.status(500).json({ message: "Translation failed" });
+    console.error("🔥 Translation error FULL:", error.response?.data || error.message);
+
+    res.status(500).json({
+      message: "Translation failed",
+      error: error.response?.data || error.message,
+    });
   }
 };
