@@ -36,6 +36,7 @@ function ChatBox() {
 
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editText, setEditText] = useState("");
+  const [translatedMessages, setTranslatedMessages] = useState({});
 
   const bottomRef = useRef(null);
 
@@ -160,6 +161,26 @@ function ChatBox() {
   const handleDeleteClick = (msg) => {
     setSelectedMessage(msg);
     setShowDeleteModal(true);
+  };
+
+  const handleTranslate = async (msg) => {
+    if (!msg?.content) return;
+
+    try {
+      const res = await api.post("/api/translate", {
+        text: msg.content,
+        targetLang: "en", // you can change later
+      });
+
+      setTranslatedMessages((prev) => ({
+        ...prev,
+        [msg._id]: res.data.translatedText,
+      }));
+
+      setSelectedMessage(null);
+    } catch (err) {
+      console.error("Translation error:", err);
+    }
   };
 
   const handleReportClick = (msg) => {
@@ -374,13 +395,13 @@ function ChatBox() {
                             : `https://mern-chat-app-8oxm.onrender.com/${msg.image}`
                         }
                         onClick={(e) => {
-                           if (msg.isDeleted) return; // ❌ no menu
+                          if (msg.isDeleted) return;
                           e.stopPropagation();
-                          setViewerImage(msg.image); // 👁️ open image
+                          setViewerImage(msg.image);
                         }}
                         onContextMenu={(e) => {
-                          e.preventDefault(); // ❌ disable browser menu
-                          handleMessageClick(e, msg); // ✅ show your menu
+                          e.preventDefault();
+                          handleMessageClick(e, msg);
                         }}
                         className="max-w-[200px] rounded mb-1 cursor-pointer"
                       />
@@ -394,6 +415,13 @@ function ChatBox() {
                             (edited)
                           </span>
                         )}
+                      </p>
+                    )}
+
+                    {/* 🔥 TRANSLATION SHOW HERE */}
+                    {translatedMessages[msg._id] && (
+                      <p className="text-sm text-green-400 mt-1">
+                        → {translatedMessages[msg._id]}
                       </p>
                     )}
                   </>
@@ -440,6 +468,8 @@ function ChatBox() {
       )}
 
       {/* SMALL MENU */}
+      {/* SMALL MENU */}
+
       {selectedMessage && (
         <div
           style={{
@@ -455,11 +485,25 @@ function ChatBox() {
               setReplyMessage(selectedMessage);
               setSelectedMessage(null);
             }}
-            className="block px-4 py-2 text-green-400"
+            className="block px-4 py-2 text-green-400 hover:bg-gray-700"
           >
             Reply
           </button>
 
+          {/* 🔥 NEW: TRANSLATE BUTTON */}
+          {!selectedMessage?.isDeleted && selectedMessage?.content && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleTranslate(selectedMessage);
+              }}
+              className="block px-4 py-2 text-purple-400 hover:bg-gray-700"
+            >
+              Translate
+            </button>
+          )}
+
+          {/* ✅ Only YOUR messages */}
           {selectedMessage?.sender?._id === user?._id && (
             <>
               <button
@@ -483,7 +527,7 @@ function ChatBox() {
 
               <button
                 onClick={(e) => {
-                  e.stopPropagation(); // 🔥 VERY IMPORTANT
+                  e.stopPropagation();
                   handleDeleteClick(selectedMessage);
                 }}
                 className="block px-4 py-2 text-red-400 hover:bg-gray-700"
@@ -493,7 +537,8 @@ function ChatBox() {
             </>
           )}
 
-          {selectedMessage?.sender?._id !== user._id && (
+          {/* ✅ Others */}
+          {selectedMessage?.sender?._id !== user?._id && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
