@@ -31,7 +31,7 @@ app.use((req, res, next) => {
 // Middleware
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://your-frontend.vercel.app"
+  "https://mern-chat-app-iota-seven.vercel.app"
 ];
 
 app.use(cors({

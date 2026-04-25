@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://your-frontend.vercel.app",
+  "https://mern-chat-app-iota-seven.vercel.app",
 ];
 
 const setupSocket = (server) => {
