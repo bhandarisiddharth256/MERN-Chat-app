@@ -7,6 +7,8 @@ import { socket } from "../socket/socket";
 import GroupRenameModal from "./GroupRenameModal";
 import GroupInfoModal from "./GroupInfoModal";
 import ImageViewer from "./ImageViewer";
+import { languages } from "../constants/languages";
+import LanguageDropdown from "../components/LanguageDropdown";
 
 function ChatBox() {
   const {
@@ -37,8 +39,11 @@ function ChatBox() {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editText, setEditText] = useState("");
   const [translatedMessages, setTranslatedMessages] = useState({});
+  const [targetLang, setTargetLang] = useState("es");
+  const [showTranslateUI, setShowTranslateUI] = useState(false);
 
   const bottomRef = useRef(null);
+  const translateRef = useRef(null);
 
   useEffect(() => {
     if (!user?._id) return;
@@ -103,7 +108,15 @@ function ChatBox() {
 
   /* ================= CLOSE MENU ================= */
   useEffect(() => {
-    const close = () => setSelectedMessage(null);
+    const close = (e) => {
+      // ❗ Ignore clicks inside translate UI
+      if (translateRef.current && translateRef.current.contains(e.target)) {
+        return;
+      }
+
+      setSelectedMessage(null);
+      setShowTranslateUI(false);
+    };
 
     if (selectedMessage) {
       window.addEventListener("click", close);
@@ -169,18 +182,31 @@ function ChatBox() {
     try {
       const res = await api.post("/api/translate", {
         text: msg.content,
-        targetLang: "en", // you can change later
+        targetLang: targetLang,
       });
-      console.log("🔥 API RESPONSE:", res.data); // 👈 ADD THIS
+
+      console.log("🔥 API RESPONSE:", "how are you");
+
       setTranslatedMessages((prev) => ({
         ...prev,
         [msg._id]: res.data.translatedText,
       }));
 
       setSelectedMessage(null);
+
+      // ✅ HIDE UI after success
+      setShowTranslateUI(false);
     } catch (err) {
       console.error("Translation error:", err);
+
+      // optional: also hide on error
+      setShowTranslateUI(false);
     }
+  };
+
+  const handleTranslateClick = (msg) => {
+    setSelectedMessage(msg);
+    setShowTranslateUI(true); // 👈 THIS WAS MISSING
   };
 
   const handleReportClick = (msg) => {
@@ -215,6 +241,11 @@ function ChatBox() {
     setEditingMessageId(selectedMessage._id);
     setEditText(selectedMessage.content || "");
     setSelectedMessage(null);
+  };
+
+  const onTranslateClick = (msg) => {
+    setSelectedMessage(msg);
+    setShowTranslateUI(true); // 👈 SHOW UI
   };
 
   const saveEdit = async (messageId) => {
@@ -274,6 +305,7 @@ function ChatBox() {
     ? selectedChat.chatName
     : otherUser?.name;
 
+  const selectedLang = languages.find((l) => l.value === targetLang);
   /* ================= UI ================= */
   return (
     <div className="flex-1 flex flex-col bg-gray-900">
@@ -392,7 +424,7 @@ function ChatBox() {
                         src={
                           msg.image.startsWith("http")
                             ? msg.image
-                            : `https://mern-chat-app-8oxm.onrender.com/${msg.image}`
+                            : `${import.meta.env.VITE_API_URL}/${msg.image}`
                         }
                         onClick={(e) => {
                           if (msg.isDeleted) return;
@@ -419,9 +451,18 @@ function ChatBox() {
                     )}
 
                     {/* 🔥 TRANSLATION SHOW HERE */}
-                    {translatedMessages[msg._id] && (
-                      <p className="text-sm text-green-400 mt-1">
-                        → {translatedMessages[msg._id]}
+                    {translatedMessages[msg._id] !== undefined && (
+                      <p
+                        className="text-sm text-green-400 mt-1 cursor-pointer"
+                        onClick={() => {
+                          setTranslatedMessages((prev) => {
+                            const copy = { ...prev };
+                            delete copy[msg._id]; // 🔥 remove
+                            return copy;
+                          });
+                        }}
+                      >
+                        → {translatedMessages[msg._id] || "⚠️ No translation"}
                       </p>
                     )}
                   </>
@@ -450,6 +491,24 @@ function ChatBox() {
             className="text-red-400"
           >
             ✕
+          </button>
+        </div>
+      )}
+
+      {showTranslateUI && selectedMessage && (
+        <div ref={translateRef} className="bg-gray-800 p-2">
+          <LanguageDropdown
+            targetLang={targetLang}
+            setTargetLang={setTargetLang}
+          />
+
+          <p>Translating to: {selectedLang?.label}</p>
+
+          <button
+            onClick={() => handleTranslate(selectedMessage)}
+            className="mt-2 px-3 py-1 bg-blue-500 text-white rounded"
+          >
+            Confirm Translate
           </button>
         </div>
       )}
@@ -494,7 +553,7 @@ function ChatBox() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleTranslate(selectedMessage);
+                onTranslateClick(selectedMessage);
               }}
               className="block px-4 py-2 text-purple-400 hover:bg-gray-700"
             >
