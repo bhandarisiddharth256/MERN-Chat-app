@@ -119,37 +119,6 @@ VITE_API_URL=
   /models
   /config
 ```
-
----
-
-## 🚀 Getting Started
-
-### 1️⃣ Clone the repository
-
-```
-git clone https://github.com/your-username/your-repo-name.git
-```
-
-### 2️⃣ Install dependencies
-
-```
-cd backend
-npm install
-
-cd ../frontend
-npm install
-```
-
-### 3️⃣ Run the app
-
-```
-# backend
-npm run dev
-
-# frontend
-npm run dev
-```
-
 ---
 
 ## 🧠 Highlights (Why this project stands out)
