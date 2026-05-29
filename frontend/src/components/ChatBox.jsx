@@ -42,8 +42,19 @@ function ChatBox() {
   const [targetLang, setTargetLang] = useState("es");
   const [showTranslateUI, setShowTranslateUI] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchThreshold, setSearchThreshold] = useState(0.6);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+
   const bottomRef = useRef(null);
   const translateRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
+  const highlightTimeoutRef = useRef(null);
+  const isSemanticSearchEnabled =
+    import.meta.env.VITE_SEMANTIC_SEARCH_ENABLED !== "false";
 
   useEffect(() => {
     if (!user?._id) return;
@@ -73,6 +84,51 @@ function ChatBox() {
 
     fetchMessages();
   }, [selectedChat?._id]);
+
+  /* ================= SEMANTIC SEARCH ================= */
+  useEffect(() => {
+    if (!isSemanticSearchEnabled || !selectedChat?._id) {
+      setSearchResults([]);
+      setSearchError("");
+      return;
+    }
+
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setSearchError("");
+      clearTimeout(searchTimeoutRef.current);
+      return;
+    }
+
+    clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await api.post("/api/semantic/search", {
+          query: searchQuery,
+          chatId: selectedChat._id,
+          limit: 8,
+          minScore: searchThreshold,
+        });
+        setSearchResults(res.data.results || []);
+        setSearchError("");
+      } catch (err) {
+        setSearchResults([]);
+        const message =
+          err.response?.data?.message || err.message || "Search failed";
+        setSearchError(message);
+        console.error("Semantic search request failed:", message, err);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(searchTimeoutRef.current);
+  }, [searchQuery, selectedChat?._id, isSemanticSearchEnabled]);
+
+  useEffect(() => {
+    return () => clearTimeout(highlightTimeoutRef.current);
+  }, []);
 
   /* ================= SOCKET MESSAGE ================= */
   useEffect(() => {
@@ -105,6 +161,18 @@ function ChatBox() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const scrollToMessage = (messageId) => {
+    const target = document.getElementById(`message-${messageId}`);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedMessageId(messageId);
+    clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedMessageId(null);
+    }, 3000);
+  };
 
   /* ================= CLOSE MENU ================= */
   useEffect(() => {
@@ -310,57 +378,128 @@ function ChatBox() {
   return (
     <div className="flex-1 flex flex-col bg-gray-900">
       {/* HEADER */}
-      <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-        <div>
-          <h2 className="text-lg font-semibold">{chatName}</h2>
-          {/* const isOnline =
-              !chat.isGroupChat && onlineUsers.includes(otherUser?._id);
-          {!selectedChat.isGroupChat && (
-            <p className="text-sm text-gray-400">
-              {isOnline ? "Online" : "Offline"}
-            </p>
-          )} */}
-        </div>
+      <div className="p-4 border-b border-gray-700 flex flex-col gap-3">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-lg font-semibold">{chatName}</h2>
+          </div>
 
-        <div className="flex gap-3">
-          {/* ✅ Rename (only admin) */}
-          {selectedChat.isGroupChat &&
-            selectedChat.groupAdmin?._id === user._id && (
+          <div className="flex gap-3">
+            {/* ✅ Rename (only admin) */}
+            {selectedChat.isGroupChat &&
+              selectedChat.groupAdmin?._id === user._id && (
+                <button
+                  onClick={() => setShowRenameModal(true)}
+                  className="text-sm text-blue-400"
+                >
+                  Rename
+                </button>
+              )}
+
+            {/* ✅ Info */}
+            {selectedChat.isGroupChat && (
               <button
-                onClick={() => setShowRenameModal(true)}
-                className="text-sm text-blue-400"
+                onClick={() => setShowGroupInfo(true)}
+                className="text-sm text-gray-400"
               >
-                Rename
+                Info
               </button>
             )}
-
-          {/* ✅ Info */}
-          {selectedChat.isGroupChat && (
-            <button
-              onClick={() => setShowGroupInfo(true)}
-              className="text-sm text-gray-400"
-            >
-              Info
-            </button>
-          )}
+          </div>
         </div>
+
+        {isSemanticSearchEnabled && (
+          <div className="space-y-2 max-w-md">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search chat"
+                  className="w-full rounded bg-gray-800 border border-gray-700 px-3 py-2 pr-9 text-sm text-white focus:border-blue-400 focus:outline-none"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setSearchResults([]);
+                      setSearchError("");
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <select
+                value={searchThreshold}
+                onChange={(e) => setSearchThreshold(Number(e.target.value))}
+                className="rounded bg-gray-800 border border-gray-700 px-2 py-2 text-sm text-white"
+              >
+                <option value={0.10}>0.10</option>
+                <option value={0.20}>0.20</option>
+                <option value={0.30}>0.30</option>
+                <option value={0.40}>0.40</option>
+                <option value={0.45}>0.45</option>
+              </select>
+            </div>
+            <p className="text-xs text-gray-400">
+              Showing results with similarity ≥ {searchThreshold.toFixed(2)}
+            </p>
+            {searchLoading && (
+              <p className="text-xs text-gray-400">Searching messages...</p>
+            )}
+            {searchError && (
+              <p className="text-xs text-red-400">{searchError}</p>
+            )}
+            {searchResults.length > 0 ? (
+              <div className="max-h-48 overflow-y-auto rounded border border-gray-700 bg-gray-950 p-2 text-sm">
+                {searchResults.map((result) => (
+                  <button
+                    key={result._id}
+                    type="button"
+                    onClick={() => scrollToMessage(result._id)}
+                    className="w-full text-left p-2 mb-1 rounded bg-gray-800 hover:bg-gray-700"
+                  >
+                    <p className="truncate font-medium">
+                      {result.content || "📷 Image"}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      Score: {result.similarityScore?.toFixed(3)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              searchQuery.trim() && !searchLoading && !searchError && (
+                <p className="text-xs text-gray-400">
+                  No matching messages found.
+                </p>
+              )
+            )}
+          </div>
+        )}
       </div>
 
       {/* MESSAGES */}
       <div className="flex-1 p-4 overflow-y-auto space-y-2">
         {messages.map((msg) => {
           const isSender = msg?.sender?._id === user?._id;
+          const isHighlighted = highlightedMessageId === msg._id;
 
           return (
             <div
               key={msg._id}
+              id={`message-${msg._id}`}
               className={`flex ${isSender ? "justify-end" : "justify-start"}`}
             >
               <div
                 onClick={(e) => handleMessageClick(e, msg)}
                 className={`px-3 py-2 rounded max-w-xs cursor-pointer ${
                   isSender ? "bg-blue-600" : "bg-gray-700"
-                }`}
+                } ${isHighlighted ? "ring-2 ring-yellow-400" : ""}`}
               >
                 {/* 🔥 REPLY BLOCK (CORRECT PLACE) */}
                 {msg.replyTo && (

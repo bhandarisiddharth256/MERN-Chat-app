@@ -31,6 +31,11 @@ const messageSchema = mongoose.Schema(
       required: true,
     },
 
+    embedding: {
+      type: [Number],
+      default: undefined,
+    },
+
     // ✅ DELETE FEATURE
     isDeleted: {
       type: Boolean,

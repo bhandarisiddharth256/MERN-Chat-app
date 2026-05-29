@@ -1,6 +1,7 @@
 import Message from "../models/Message.js";
 import Chat from "../models/Chat.js";
 import ChatUser from "../models/ChatUser.js";
+import { embedMessageInBackground } from "../semantic-search/semanticService.js";
 
 /**
  * @desc    Send a message
@@ -62,6 +63,8 @@ export const sendMessage = async (req, res) => {
     );
 
     res.status(201).json(message);
+
+    embedMessageInBackground(message._id, content || (image ? "[image]" : ""));
   } catch (error) {
     console.error("Send message error:", error);
     res.status(500).json({ message: "Server error" });

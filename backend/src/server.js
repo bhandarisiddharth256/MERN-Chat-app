@@ -8,6 +8,7 @@ import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
+import semanticRoutes from "./routes/semanticRoutes.js";
 import setupSocket from "./socket/socket.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import translateRoutes from "./routes/translateRoutes.js";
@@ -52,6 +53,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/semantic", semanticRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/translate", translateRoutes);
 
