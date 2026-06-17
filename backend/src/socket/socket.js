@@ -51,6 +51,12 @@ const setupSocket = (server) => {
       console.log(`User joined chat: ${chatId}`);
     });
 
+    // Leave chat room
+    socket.on("leave chat", (chatId) => {
+      socket.leave(chatId);
+      console.log(`User left chat: ${chatId}`);
+    });
+
     // New message
     socket.on("new message", (newMessage) => {
       const chat = newMessage.chat;
@@ -58,21 +64,16 @@ const setupSocket = (server) => {
       if (!chat.users) return;
 
       chat.users.forEach((user) => {
-        if (user._id === newMessage.sender._id) return;
+        const userId = user._id ? user._id.toString() : user.toString();
+        const senderId = newMessage.sender._id
+          ? newMessage.sender._id.toString()
+          : newMessage.sender.toString();
 
-        socket.to(user._id).emit("message received", newMessage);
+        if (userId === senderId) return;
+
+        socket.to(userId).emit("message received", newMessage);
       });
     });
-
-    // socket.on("delete message", (data) => {
-    //   const { messageId, chatId } = data;
-
-    //   io.to(chatId).emit("message deleted", {
-    //     messageId,
-    //     isDeleted: true,
-    //     content: "This message was deleted",
-    //   });
-    // });
 
     socket.on("chat seen", async (chatId) => {
       try {

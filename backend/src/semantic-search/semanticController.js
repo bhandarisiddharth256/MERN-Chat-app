@@ -34,30 +34,65 @@ export const semanticSearch = async (req, res) => {
   }
 
   try {
-    const queryEmbedding = await embedText(query);
-
-    if (!queryEmbedding.length) {
-      return res.status(400).json({ message: "Query text could not be embedded" });
-    }
-
-    const messages = await Message.find({
+    // 1. Fetch exact matches (keyword search)
+    const exactMatches = await Message.find({
       chat: chatId,
       isDeleted: false,
-      embedding: { $exists: true, $ne: [] },
+      content: { $regex: query, $options: "i" },
     })
       .populate("sender", "name email avatar")
       .populate("chat")
       .sort({ createdAt: -1 });
 
-    const results = messages
-      .map((message) => {
-        const score = cosineSimilarity(queryEmbedding, message.embedding || []);
-        return {
-          message,
-          score: score === null ? -1 : score,
-        };
+    // 2. Fetch messages with embeddings (for semantic search)
+    const queryEmbedding = await embedText(query);
+    let semanticMatches = [];
+
+    if (queryEmbedding.length) {
+      const messagesWithEmbeddings = await Message.find({
+        chat: chatId,
+        isDeleted: false,
+        embedding: { $exists: true, $ne: [] },
       })
-      .filter((item) => item.score !== -1 && item.score >= Number(minScore))
+        .populate("sender", "name email avatar")
+        .populate("chat")
+        .sort({ createdAt: -1 });
+
+      semanticMatches = messagesWithEmbeddings
+        .map((message) => {
+          const score = cosineSimilarity(queryEmbedding, message.embedding || []);
+          return {
+            message,
+            score: score === null ? -1 : score,
+          };
+        })
+        .filter((item) => item.score !== -1 && item.score >= Number(minScore));
+    }
+
+    // 3. Merge and deduplicate
+    const mergedResultsMap = new Map();
+
+    // First, add exact matches (with a perfect relevance score of 1.0)
+    exactMatches.forEach((msg) => {
+      mergedResultsMap.set(msg._id.toString(), {
+        message: msg,
+        score: 1.0,
+      });
+    });
+
+    // Then, add semantic matches (or update if score is higher, though 1.0 is max anyway)
+    semanticMatches.forEach(({ message, score }) => {
+      const idStr = message._id.toString();
+      if (!mergedResultsMap.has(idStr) || mergedResultsMap.get(idStr).score < score) {
+        mergedResultsMap.set(idStr, {
+          message,
+          score,
+        });
+      }
+    });
+
+    // Convert map to sorted array
+    const sortedResults = Array.from(mergedResultsMap.values())
       .sort((a, b) => b.score - a.score)
       .slice(0, Number(limit))
       .map(({ message, score }) => ({
@@ -65,7 +100,7 @@ export const semanticSearch = async (req, res) => {
         similarityScore: score,
       }));
 
-    res.json({ results });
+    res.json({ results: sortedResults });
   } catch (error) {
     console.error("Semantic search error:", error);
     res.status(500).json({ message: "Server error" });

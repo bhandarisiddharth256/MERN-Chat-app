@@ -8,7 +8,7 @@ import GroupRenameModal from "./GroupRenameModal";
 import GroupInfoModal from "./GroupInfoModal";
 import ImageViewer from "./ImageViewer";
 import { languages } from "../constants/languages";
-import LanguageDropdown from "./LanguageDropdown";
+import LanguageDropdown from "../components/LanguageDropdown";
 
 function ChatBox() {
   const {
@@ -57,30 +57,32 @@ function ChatBox() {
     import.meta.env.VITE_SEMANTIC_SEARCH_ENABLED !== "false";
 
   useEffect(() => {
+    if (!user?._id) return;
+
+    socket.connect(); // 🔥 important if autoConnect: false
+
+    socket.emit("setup", user);
+
+    socket.on("connected", () => {
+      console.log("✅ Socket connected");
+    });
+
+    return () => {
+      socket.off("connected");
+    };
+  }, [user]);
+
+  /* ================= FETCH ================= */
+  useEffect(() => {
     if (!selectedChat?._id) return;
 
-    const currentChatId = selectedChat._id;
-
-    // Reset reply and edit states when chat changes
-    setReplyMessage(null);
-    setEditingMessageId(null);
-    setEditText("");
-
     const fetchMessages = async () => {
-      try {
-        const res = await api.get(`/api/messages/${currentChatId}`);
-        setMessages(res.data);
-        socket.emit("join chat", currentChatId);
-      } catch (err) {
-        console.error("Error fetching messages:", err);
-      }
+      const res = await api.get(`/api/messages/${selectedChat._id}`);
+      setMessages(res.data);
+      socket.emit("join chat", selectedChat._id);
     };
 
     fetchMessages();
-
-    return () => {
-      socket.emit("leave chat", currentChatId);
-    };
   }, [selectedChat?._id]);
 
   /* ================= SEMANTIC SEARCH ================= */
@@ -122,156 +124,38 @@ function ChatBox() {
     }, 400);
 
     return () => clearTimeout(searchTimeoutRef.current);
-  }, [searchQuery, selectedChat?._id, isSemanticSearchEnabled, searchThreshold]);
+  }, [searchQuery, selectedChat?._id, isSemanticSearchEnabled]);
 
   useEffect(() => {
     return () => clearTimeout(highlightTimeoutRef.current);
   }, []);
 
-  /* ================= SOCKET EVENT LISTENERS ================= */
+  /* ================= SOCKET MESSAGE ================= */
   useEffect(() => {
-    const handleMessageReceived = (newMessage) => {
-      const chatOfMessage = newMessage.chat;
-      const chatId = chatOfMessage._id || chatOfMessage;
-
-      // 1. Update active chat messages list
-      if (selectedChat?._id === chatId) {
-        setMessages((prev) => {
-          if (prev.some((m) => m._id === newMessage._id)) return prev;
-          return [...prev, newMessage];
-        });
-
-        // Mark chat as read on server
-        api.put(`/api/chats/${chatId}/read`).catch((err) => {
-          console.error("Failed to mark chat as read on message receive", err);
-        });
+    socket.on("message received", (newMessage) => {
+      if (newMessage.chat._id === selectedChat?._id) {
+        setMessages((prev) => [...prev, newMessage]);
       }
+    });
 
-      // 2. Update sidebar chats list
-      setChats((prevChats) => {
-        const existingChatIndex = prevChats.findIndex((c) => c._id === chatId);
+    return () => socket.off("message received");
+  }, [selectedChat]);
 
-        if (existingChatIndex !== -1) {
-          const existingChat = prevChats[existingChatIndex];
-          const updatedChat = {
-            ...existingChat,
-            lastMessage: newMessage,
-            unreadCount:
-              selectedChat?._id === chatId
-                ? 0
-                : existingChat.unreadCount + 1,
-          };
-
-          const newChatsList = [...prevChats];
-          newChatsList.splice(existingChatIndex, 1);
-          return [updatedChat, ...newChatsList];
-        } else {
-          // If the chat doesn't exist in sidebar yet, fetch chat list
-          api.get("/api/chats")
-            .then((res) => setChats(res.data))
-            .catch((err) => console.error("Error fetching chats on new message:", err));
-          return prevChats;
-        }
-      });
-    };
-
-    const handleMessageDeleted = (data) => {
+  /* ================= SOCKET DELETE ================= */
+  useEffect(() => {
+    socket.on("message deleted", (data) => {
       console.log("🔥 RECEIVED DELETE EVENT:", data);
-
-      // Update active messages list
       setMessages((prev) =>
         prev.map((msg) =>
           msg._id === data.messageId
-            ? { ...msg, isDeleted: true, content: "This message was deleted", image: null }
+            ? { ...msg, isDeleted: true, content: "", image: null }
             : msg,
         ),
       );
+    });
 
-      // Update reply preview if deleted message is targeted for reply
-      setReplyMessage((prev) =>
-        prev?._id === data.messageId
-          ? { ...prev, isDeleted: true, content: "This message was deleted", image: null }
-          : prev
-      );
-
-      // Update sidebar chats list
-      setChats((prevChats) =>
-        prevChats.map((chat) =>
-          chat.lastMessage?._id === data.messageId
-            ? {
-                ...chat,
-                lastMessage: {
-                  ...chat.lastMessage,
-                  isDeleted: true,
-                  content: "This message was deleted",
-                  image: null,
-                },
-              }
-            : chat,
-        ),
-      );
-    };
-
-    const handleMessageEdited = (data) => {
-      console.log("🔥 RECEIVED EDIT EVENT:", data);
-
-      // Update active messages list
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg._id === data.messageId
-            ? { ...msg, content: data.content, isEdited: true }
-            : msg,
-        ),
-      );
-
-      // Update reply preview if edited message is targeted for reply
-      setReplyMessage((prev) =>
-        prev?._id === data.messageId
-          ? { ...prev, content: data.content, isEdited: true }
-          : prev
-      );
-
-      // Update sidebar chats list
-      setChats((prevChats) =>
-        prevChats.map((chat) =>
-          chat.lastMessage?._id === data.messageId
-            ? {
-                ...chat,
-                lastMessage: {
-                  ...chat.lastMessage,
-                  content: data.content,
-                  isEdited: true,
-                },
-              }
-            : chat,
-        ),
-      );
-    };
-
-    const handleTyping = (userName) => {
-      setTypingUser(userName);
-    };
-
-    const handleStopTyping = () => {
-      setTypingUser("");
-    };
-
-    // Register all listeners
-    socket.on("message received", handleMessageReceived);
-    socket.on("message deleted", handleMessageDeleted);
-    socket.on("message edited", handleMessageEdited);
-    socket.on("typing", handleTyping);
-    socket.on("stop typing", handleStopTyping);
-
-    // Clean up all listeners on dependency change/unmount
-    return () => {
-      socket.off("message received", handleMessageReceived);
-      socket.off("message deleted", handleMessageDeleted);
-      socket.off("message edited", handleMessageEdited);
-      socket.off("typing", handleTyping);
-      socket.off("stop typing", handleStopTyping);
-    };
-  }, [selectedChat?._id, setChats]);
+    return () => socket.off("message deleted");
+  }, []);
 
   /* ================= SCROLL ================= */
   useEffect(() => {
@@ -309,15 +193,35 @@ function ChatBox() {
     return () => window.removeEventListener("click", close);
   }, [selectedMessage]);
 
-  // Validate that reply target belongs to current chat
   useEffect(() => {
-    if (replyMessage) {
-      const replyChatId = replyMessage.chat?._id || replyMessage.chat;
-      if (replyChatId !== selectedChat?._id) {
-        setReplyMessage(null);
-      }
-    }
-  }, [selectedChat?._id, replyMessage]);
+    socket.on("message edited", (data) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === data.messageId
+            ? { ...msg, content: data.content, isEdited: true }
+            : msg,
+        ),
+      );
+
+      // also update sidebar
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.lastMessage?._id === data.messageId
+            ? {
+                ...chat,
+                lastMessage: {
+                  ...chat.lastMessage,
+                  content: data.content,
+                  isEdited: true,
+                },
+              }
+            : chat,
+        ),
+      );
+    });
+
+    return () => socket.off("message edited");
+  }, []);
 
   /* ================= HANDLERS ================= */
   const handleMessageClick = (e, msg) => {
@@ -385,40 +289,14 @@ function ChatBox() {
     }
 
     try {
-      await api.put("/api/messages/delete", {
+      const res = await api.put("/api/messages/delete", {
         messageId: selectedMessage._id,
       });
 
-      // Update state locally for the sender immediately
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg._id === selectedMessage._id
-            ? { ...msg, isDeleted: true, content: "This message was deleted", image: null }
-            : msg,
-        ),
-      );
+      console.log("✅ Delete:", res.data);
 
-      setChats((prevChats) =>
-        prevChats.map((chat) =>
-          chat.lastMessage?._id === selectedMessage._id
-            ? {
-                ...chat,
-                lastMessage: {
-                  ...chat.lastMessage,
-                  isDeleted: true,
-                  content: "This message was deleted",
-                  image: null,
-                },
-              }
-            : chat,
-        ),
-      );
-
-      setReplyMessage((prev) =>
-        prev?._id === selectedMessage._id
-          ? { ...prev, isDeleted: true, content: "This message was deleted", image: null }
-          : prev
-      );
+      // ⚠️ OPTIONAL: backend already emits socket
+      // socket.emit("delete message", { ... });
 
       setShowDeleteModal(false);
       setSelectedMessage(null);
@@ -452,36 +330,6 @@ function ChatBox() {
         newContent: editText,
       });
 
-      // Update state locally for the sender immediately
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg._id === messageId
-            ? { ...msg, content: editText, isEdited: true }
-            : msg,
-        ),
-      );
-
-      setChats((prevChats) =>
-        prevChats.map((chat) =>
-          chat.lastMessage?._id === messageId
-            ? {
-                ...chat,
-                lastMessage: {
-                  ...chat.lastMessage,
-                  content: editText,
-                  isEdited: true,
-                },
-              }
-            : chat,
-        ),
-      );
-
-      setReplyMessage((prev) =>
-        prev?._id === messageId
-          ? { ...prev, content: editText, isEdited: true }
-          : prev
-      );
-
       setEditingMessageId(null);
       setEditText("");
     } catch (err) {
@@ -513,9 +361,7 @@ function ChatBox() {
   /* ================= EARLY RETURN ================= */
   if (!selectedChat) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-900 text-gray-400">
-        <p className="text-base">Select a conversation to start</p>
-      </div>
+      <div className="flex-1 flex items-center justify-center">Select chat</div>
     );
   }
 
@@ -532,28 +378,19 @@ function ChatBox() {
   return (
     <div className="flex-1 flex flex-col bg-gray-900">
       {/* HEADER */}
-      <div className="p-5 border-b border-gray-700 flex flex-col gap-4">
+      <div className="p-4 border-b border-gray-700 flex flex-col gap-3">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-lg font-semibold text-white">{chatName}</h2>
-            <p className="text-xs text-gray-500 mt-1">
-              {typingUser
-                ? `${typingUser} is typing...`
-                : selectedChat.isGroupChat
-                ? `${selectedChat.users.length} members`
-                : onlineUsers.includes(otherUser?._id)
-                ? "Active now"
-                : "Offline"}
-            </p>
+            <h2 className="text-lg font-semibold">{chatName}</h2>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             {/* ✅ Rename (only admin) */}
             {selectedChat.isGroupChat &&
               selectedChat.groupAdmin?._id === user._id && (
                 <button
                   onClick={() => setShowRenameModal(true)}
-                  className="px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                  className="text-sm text-blue-400"
                 >
                   Rename
                 </button>
@@ -563,7 +400,7 @@ function ChatBox() {
             {selectedChat.isGroupChat && (
               <button
                 onClick={() => setShowGroupInfo(true)}
-                className="px-3 py-1.5 text-sm text-white bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+                className="text-sm text-gray-400"
               >
                 Info
               </button>
@@ -572,14 +409,14 @@ function ChatBox() {
         </div>
 
         {isSemanticSearchEnabled && (
-          <div className="space-y-3">
+          <div className="space-y-2 max-w-md">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search messages..."
-                  className="w-full rounded-md bg-gray-800 border border-gray-600 px-3 py-2 pr-9 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                  placeholder="Search chat"
+                  className="w-full rounded bg-gray-800 border border-gray-700 px-3 py-2 pr-9 text-sm text-white focus:border-blue-400 focus:outline-none"
                 />
                 {searchQuery && (
                   <button
@@ -589,7 +426,7 @@ function ChatBox() {
                       setSearchResults([]);
                       setSearchError("");
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
                   >
                     ✕
                   </button>
@@ -599,7 +436,7 @@ function ChatBox() {
               <select
                 value={searchThreshold}
                 onChange={(e) => setSearchThreshold(Number(e.target.value))}
-                className="rounded-md bg-gray-800 border border-gray-600 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                className="rounded bg-gray-800 border border-gray-700 px-2 py-2 text-sm text-white"
               >
                 <option value={0.10}>0.10</option>
                 <option value={0.20}>0.20</option>
@@ -618,15 +455,15 @@ function ChatBox() {
               <p className="text-xs text-red-400">{searchError}</p>
             )}
             {searchResults.length > 0 ? (
-              <div className="max-h-48 overflow-y-auto rounded-md border border-gray-700 bg-gray-950 p-2 text-sm space-y-1">
+              <div className="max-h-48 overflow-y-auto rounded border border-gray-700 bg-gray-950 p-2 text-sm">
                 {searchResults.map((result) => (
                   <button
                     key={result._id}
                     type="button"
                     onClick={() => scrollToMessage(result._id)}
-                    className="w-full text-left p-2 rounded-md bg-gray-800 hover:bg-gray-700 transition-colors"
+                    className="w-full text-left p-2 mb-1 rounded bg-gray-800 hover:bg-gray-700"
                   >
-                    <p className="truncate font-medium text-white">
+                    <p className="truncate font-medium">
                       {result.content || "📷 Image"}
                     </p>
                     <p className="text-[11px] text-gray-400">
@@ -647,7 +484,7 @@ function ChatBox() {
       </div>
 
       {/* MESSAGES */}
-      <div className="flex-1 p-5 overflow-y-auto space-y-3">
+      <div className="flex-1 p-4 overflow-y-auto space-y-2">
         {messages.map((msg) => {
           const isSender = msg?.sender?._id === user?._id;
           const isHighlighted = highlightedMessageId === msg._id;
@@ -660,18 +497,18 @@ function ChatBox() {
             >
               <div
                 onClick={(e) => handleMessageClick(e, msg)}
-                className={`px-4 py-3 rounded-lg max-w-[70%] sm:max-w-[75%] md:max-w-[65%] lg:max-w-[60%] w-fit cursor-pointer shadow-sm hover:shadow-md transition-shadow ${
-                  isSender ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-gray-700 hover:bg-gray-600 text-white"
+                className={`px-3 py-2 rounded max-w-xs cursor-pointer ${
+                  isSender ? "bg-blue-600" : "bg-gray-700"
                 } ${isHighlighted ? "ring-2 ring-yellow-400" : ""}`}
               >
                 {/* 🔥 REPLY BLOCK (CORRECT PLACE) */}
                 {msg.replyTo && (
-                  <div className="bg-gray-900 bg-opacity-60 p-2.5 rounded-md mb-2 border-l-3 border-blue-400">
-                    <p className="text-xs text-blue-300 font-medium">
+                  <div className="bg-gray-800 p-2 rounded mb-1 border-l-4 border-green-400">
+                    <p className="text-xs text-gray-400">
                       {msg.replyTo.sender?.name || "User"}
                     </p>
 
-                    <p className="text-xs text-gray-300 truncate">
+                    <p className="text-xs truncate">
                       {msg.replyTo.isDeleted
                         ? "This message was deleted"
                         : msg.replyTo.content || "📷 Image"}
@@ -681,7 +518,7 @@ function ChatBox() {
 
                 {/* ✅ DELETED */}
                 {msg.isDeleted ? (
-                  <p className="italic text-gray-300 text-sm">
+                  <p className="italic text-gray-300">
                     This message was deleted
                   </p>
                 ) : editingMessageId === msg._id ? (
@@ -689,7 +526,7 @@ function ChatBox() {
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
                     autoFocus
-                    className="bg-gray-800 text-white px-3 py-2 rounded-md w-full text-sm border border-gray-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="bg-gray-800 text-white px-2 py-1 rounded w-full"
                     onClick={(e) => e.stopPropagation()}
                     onFocus={(e) =>
                       e.target.setSelectionRange(
@@ -737,15 +574,15 @@ function ChatBox() {
                           e.preventDefault();
                           handleMessageClick(e, msg);
                         }}
-                        className="max-w-[200px] rounded-md mb-2 cursor-pointer shadow-md hover:shadow-lg transition-shadow"
+                        className="max-w-[200px] rounded mb-1 cursor-pointer"
                       />
                     )}
 
                     {msg.content && (
-                      <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">
+                      <p className="text-sm break-words">
                         {msg.content}
                         {msg.isEdited && (
-                          <span className="text-xs text-gray-300 ml-2 opacity-75">
+                          <span className="text-xs text-gray-400 ml-1">
                             (edited)
                           </span>
                         )}
@@ -755,7 +592,7 @@ function ChatBox() {
                     {/* 🔥 TRANSLATION SHOW HERE */}
                     {translatedMessages[msg._id] !== undefined && (
                       <p
-                        className="text-sm text-green-300 mt-2 cursor-pointer hover:text-green-200 transition-colors"
+                        className="text-sm text-green-400 mt-1 cursor-pointer"
                         onClick={() => {
                           setTranslatedMessages((prev) => {
                             const copy = { ...prev };
@@ -778,19 +615,19 @@ function ChatBox() {
       </div>
 
       {replyMessage && (
-        <div className="mx-5 mb-3 bg-gray-800 p-3 border-l-3 border-blue-500 rounded-md flex justify-between items-center shadow-sm">
+        <div className="bg-gray-800 p-2 border-l-4 border-green-400 flex justify-between items-center">
           <div>
-            <p className="text-xs text-blue-300 font-medium">
+            <p className="text-xs text-gray-400">
               Replying to {replyMessage?.sender?.name}
             </p>
-            <p className="text-sm text-gray-300 truncate">
+            <p className="text-sm truncate">
               {replyMessage.content || "📷 Image"}
             </p>
           </div>
 
           <button
             onClick={() => setReplyMessage(null)}
-            className="ml-3 text-gray-400 hover:text-white transition-colors flex-shrink-0"
+            className="text-red-400"
           >
             ✕
           </button>
@@ -798,25 +635,20 @@ function ChatBox() {
       )}
 
       {showTranslateUI && selectedMessage && (
-        <div ref={translateRef} className="bg-gray-800 border-t border-gray-700 p-4">
-          <p className="text-sm text-gray-300 mb-3 font-medium">Translate to:</p>
-          <div className="flex items-center gap-3">
-            <LanguageDropdown
-              targetLang={targetLang}
-              setTargetLang={setTargetLang}
-            />
+        <div ref={translateRef} className="bg-gray-800 p-2">
+          <LanguageDropdown
+            targetLang={targetLang}
+            setTargetLang={setTargetLang}
+          />
 
-            <p className="text-sm text-gray-400">
-              {selectedLang?.label}
-            </p>
+          <p>Translating to: {selectedLang?.label}</p>
 
-            <button
-              onClick={() => handleTranslate(selectedMessage)}
-              className="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors"
-            >
-              Translate
-            </button>
-          </div>
+          <button
+            onClick={() => handleTranslate(selectedMessage)}
+            className="mt-2 px-3 py-1 bg-blue-500 text-white rounded"
+          >
+            Confirm Translate
+          </button>
         </div>
       )}
 
@@ -842,7 +674,7 @@ function ChatBox() {
             top: menuPosition.y,
             left: menuPosition.x,
           }}
-          className="bg-gray-800 border border-gray-700 rounded-md shadow-lg z-[9999] min-w-[140px] overflow-hidden"
+          className="bg-gray-800 border rounded shadow-md z-[9999]"
         >
           {/* ✅ Reply for ALL messages */}
           <button
@@ -850,7 +682,7 @@ function ChatBox() {
               setReplyMessage(selectedMessage);
               setSelectedMessage(null);
             }}
-            className="w-full px-4 py-2 text-left text-sm text-white hover:bg-gray-700 transition-colors border-b border-gray-700"
+            className="block px-4 py-2 text-green-400 hover:bg-gray-700"
           >
             Reply
           </button>
@@ -862,7 +694,7 @@ function ChatBox() {
                 e.stopPropagation();
                 onTranslateClick(selectedMessage);
               }}
-              className="w-full px-4 py-2 text-left text-sm text-purple-300 hover:bg-gray-700 transition-colors border-b border-gray-700"
+              className="block px-4 py-2 text-purple-400 hover:bg-gray-700"
             >
               Translate
             </button>
@@ -881,9 +713,9 @@ function ChatBox() {
                     ? "Edit message"
                     : "Edit time expired"
                 }
-                className={`w-full px-4 py-2 text-left text-sm border-b border-gray-700 transition-colors ${
+                className={`block px-4 py-2 ${
                   canEditMessage(selectedMessage)
-                    ? "text-blue-300 hover:bg-gray-700"
+                    ? "text-blue-400 hover:bg-gray-700"
                     : "text-gray-500 cursor-not-allowed"
                 }`}
               >
@@ -895,7 +727,7 @@ function ChatBox() {
                   e.stopPropagation();
                   handleDeleteClick(selectedMessage);
                 }}
-                className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-gray-700 transition-colors"
+                className="block px-4 py-2 text-red-400 hover:bg-gray-700"
               >
                 Delete
               </button>
@@ -909,7 +741,7 @@ function ChatBox() {
                 e.stopPropagation();
                 handleReportClick(selectedMessage);
               }}
-              className="w-full px-4 py-2 text-left text-sm text-yellow-400 hover:bg-gray-700 transition-colors"
+              className="block px-4 py-2 text-yellow-400 hover:bg-gray-700"
             >
               Report
             </button>
@@ -919,30 +751,31 @@ function ChatBox() {
 
       {/* DELETE MODAL */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[9999]">
-          <div className="bg-gray-800 w-[380px] rounded-lg shadow-xl p-6 border border-gray-700">
+        <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-[9999]">
+          <div className="bg-gray-900 w-[350px] rounded-xl shadow-lg p-6">
             {/* Title */}
             <h2 className="text-white text-lg font-semibold mb-2">
               Delete Message
             </h2>
 
             {/* Description */}
-            <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-              Are you sure you want to delete this message? This action cannot be undone.
+            <p className="text-gray-400 text-sm mb-6">
+              Are you sure you want to delete this message? This action cannot
+              be undone.
             </p>
 
             {/* Buttons */}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white font-medium transition-colors"
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition"
               >
                 Cancel
               </button>
 
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white font-medium transition-colors"
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white transition"
               >
                 Delete
               </button>
@@ -953,20 +786,20 @@ function ChatBox() {
 
       {/* REPORT MODAL */}
       {showReportModal && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[9999]">
-          <div className="bg-gray-800 w-[380px] rounded-lg shadow-xl p-6 border border-gray-700">
+        <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-[9999]">
+          <div className="bg-gray-900 w-[350px] rounded-xl shadow-lg p-6">
             {/* Title */}
             <h2 className="text-white text-lg font-semibold mb-4">
               Report Message
             </h2>
 
             {/* Options */}
-            <div className="flex flex-col gap-2 mb-6">
+            <div className="flex flex-col gap-3">
               {["Spam", "Abuse", "Harassment", "Other"].map((type) => (
                 <button
                   key={type}
                   onClick={() => confirmReport(type.toLowerCase())}
-                  className="w-full text-left px-4 py-2.5 rounded-md bg-gray-700 hover:bg-gray-600 text-white font-medium transition-colors"
+                  className="w-full text-left px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white transition"
                 >
                   {type}
                 </button>
@@ -974,16 +807,23 @@ function ChatBox() {
             </div>
 
             {/* Footer Buttons */}
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setShowReportModal(false)}
-                className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white font-medium transition-colors"
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white"
               >
                 Cancel
               </button>
-            </div>
+
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white"
+              >
+                Close
+              </button>
             </div>
           </div>
+        </div>
       )}
 
       {showRenameModal && (
@@ -1000,6 +840,7 @@ function ChatBox() {
         />
       )}
     </div>
-  )}
+  );
+}
 
 export default ChatBox;

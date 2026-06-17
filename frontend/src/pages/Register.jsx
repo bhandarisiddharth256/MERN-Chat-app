@@ -19,15 +19,23 @@ function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-      <div className="w-full max-w-md bg-gray-800 p-6 rounded-lg shadow-lg">
-        
-        <h2 className="text-2xl font-semibold text-center mb-6">
-          Create an Account
-        </h2>
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4 py-10 sm:px-6">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-700 shadow-lg shadow-black/20 rounded-3xl p-8">
+        <div className="text-center mb-8">
+          <div className="mx-auto mb-4 h-12 w-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-lg font-semibold">
+            C
+          </div>
+          <p className="text-sm font-medium uppercase tracking-[0.24em] text-sky-300 mb-3">
+            Chat App
+          </p>
+          <h2 className="text-2xl font-semibold text-white">Create an account</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            Start messaging with your contacts today.
+          </p>
+        </div>
 
         {error && (
-          <p className="text-red-400 text-sm text-center mb-4">
+          <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-sm text-red-300 mb-4">
             {error}
           </p>
         )}
@@ -38,7 +46,7 @@ function Register() {
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-4 py-2 rounded bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 transition"
             required
           />
 
@@ -47,7 +55,7 @@ function Register() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 rounded bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 transition"
             required
           />
 
@@ -56,21 +64,21 @@ function Register() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 rounded bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 transition"
             required
           />
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded font-medium"
+            className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-blue-500/20 transition hover:bg-blue-500"
           >
             Register
           </button>
         </form>
 
-        <p className="text-sm text-gray-400 text-center mt-4">
+        <p className="text-sm text-slate-400 text-center mt-6">
           Already have an account?{" "}
-          <Link to="/login" className="text-blue-400 hover:underline">
+          <Link to="/login" className="font-medium text-blue-300 hover:text-blue-200 transition">
             Login
           </Link>
         </p>
